@@ -27,6 +27,26 @@ def get_download_link(df, filename="updated_data_web_app.csv"):
         mime='text/csv'
     )
 
+# Helper to detect numeric columns (including numbers stored as strings or formatted with currency/commas)
+def find_numeric_columns(dataframe):
+    if dataframe is None or dataframe.empty:
+        return []
+    numeric_list = dataframe.select_dtypes(include=['number']).columns.tolist()
+    for col in dataframe.columns:
+        if col not in numeric_list:
+            try:
+                sample = dataframe[col].dropna()
+                if len(sample) > 0:
+                    cleaned = pd.to_numeric(
+                        sample.astype(str).str.replace('$', '', regex=False).str.replace(',', '', regex=False).str.strip(),
+                        errors='coerce'
+                    )
+                    if cleaned.notna().sum() >= 0.5 * len(sample):
+                        numeric_list.append(col)
+            except Exception:
+                pass
+    return numeric_list
+
 # Function to render interactive Matplotlib visualization module
 def render_visualization_module(df):
     st.write("---")
@@ -37,7 +57,7 @@ def render_visualization_module(df):
         st.warning("⚠️ No data available to visualize. Please upload and clean a CSV file.")
         return
 
-    numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+    numeric_cols = find_numeric_columns(df)
     all_cols = df.columns.tolist()
 
     with st.container():
@@ -172,71 +192,138 @@ def render_visualization_module(df):
 
             # ----------------- 2. LINE CHART -----------------
             elif chart_type == "Line Chart":
-                if not numeric_cols:
-                    st.warning("⚠️ Line chart requires at least one numeric column for the Y-axis.")
-                    plt.close(fig)
-                    return
-
                 l_c1, l_c2 = st.columns(2)
                 with l_c1:
                     x_options = ["Index (Row Number)"] + all_cols
                     x_col = st.selectbox("Select X-axis", options=x_options, key="line_x_col")
                     sort_x = st.checkbox("Sort along X-axis", value=True, key="line_sort_x")
                 with l_c2:
-                    y_cols = st.multiselect("Select Y-axis Column(s)", options=numeric_cols, default=[numeric_cols[0]], key="line_y_cols")
+                    default_mode_idx = 0 if len(numeric_cols) > 0 else 1
+                    line_mode = st.selectbox(
+                        "Line Chart Mode",
+                        ["Numeric Column Values", "Count of Records (Frequency over X)"],
+                        index=default_mode_idx,
+                        key="line_mode"
+                    )
 
                 l_c3, l_c4 = st.columns(2)
                 with l_c3:
-                    marker_style = st.selectbox("Marker Style", ["None", "Circle (o)", "Square (s)", "Triangle (^)", "Diamond (d)"], key="line_marker")
+                    marker_style = st.selectbox("Marker Style", ["Circle (o)", "Square (s)", "Triangle (^)", "Diamond (d)", "None"], key="line_marker")
                     line_style = st.selectbox("Line Style", ["Solid (-)", "Dashed (--)", "Dotted (:)", "Dash-dot (-.)"], key="line_style")
                 with l_c4:
                     line_width = st.slider("Line Width", min_value=1.0, max_value=5.0, value=2.0, step=0.5, key="line_width")
                     fill_area = st.checkbox("Shade Area Under Line", value=False, key="line_fill")
 
-                if not y_cols:
-                    st.warning("Please select at least one numeric column to plot on the Y-axis.")
-                else:
-                    try:
-                        marker_map = {"None": None, "Circle (o)": "o", "Square (s)": "s", "Triangle (^)": "^", "Diamond (d)": "d"}
-                        style_map = {"Solid (-)": "-", "Dashed (--)": "--", "Dotted (:)": ":", "Dash-dot (-.)": "-."}
+                marker_map = {"None": None, "Circle (o)": "o", "Square (s)": "s", "Triangle (^)": "^", "Diamond (d)": "d"}
+                style_map = {"Solid (-)": "-", "Dashed (--)": "--", "Dotted (:)": ":", "Dash-dot (-.)": "-."}
 
-                        if x_col == "Index (Row Number)":
-                            sub_df = df[y_cols].copy().dropna(how='all')
-                            x_vals = sub_df.index
-                            default_xlabel = "Row Index"
-                        else:
-                            sub_df = df[[x_col] + y_cols].copy().dropna(subset=[x_col])
+                # Case A: Frequency Count Line Chart (Works on any categorical or date data)
+                if line_mode == "Count of Records (Frequency over X)":
+                    if x_col == "Index (Row Number)":
+                        st.info("ℹ️ Select a specific column for the X-axis above to see frequency counts over categories or dates.")
+                    else:
+                        try:
+                            counts = df[x_col].astype(str).value_counts().dropna()
                             if sort_x:
-                                sub_df = sub_df.sort_values(by=x_col)
-                            x_vals = sub_df[x_col]
-                            default_xlabel = str(x_col)
+                                try:
+                                    counts = counts.sort_index()
+                                except Exception:
+                                    pass
+                            x_vals = [str(x) for x in counts.index]
+                            y_vals = counts.values
 
-                        for col_name in y_cols:
                             ax.plot(
                                 x_vals,
-                                sub_df[col_name],
-                                label=str(col_name),
+                                y_vals,
+                                label="Record Count",
                                 marker=marker_map[marker_style],
                                 linestyle=style_map[line_style],
                                 linewidth=line_width,
+                                color="#2b5c8f",
                                 alpha=0.9
                             )
                             if fill_area:
-                                ax.fill_between(x_vals, sub_df[col_name], alpha=0.15)
+                                ax.fill_between(range(len(x_vals)), y_vals, alpha=0.15, color="#2b5c8f")
 
-                        ax.set_xlabel(custom_xlabel or default_xlabel)
-                        default_ylabel = ", ".join(y_cols) if len(y_cols) <= 2 else "Values"
-                        ax.set_ylabel(custom_ylabel or default_ylabel)
-                        default_title = f"Line Chart: {default_ylabel} vs {default_xlabel}"
-                        ax.set_title(custom_title or default_title, fontsize=13, fontweight='bold')
-                        ax.legend(loc='best')
+                            ax.set_xlabel(custom_xlabel or str(x_col))
+                            ax.set_ylabel(custom_ylabel or "Count of Records")
+                            default_title = f"Frequency Trend of {x_col}"
+                            ax.set_title(custom_title or default_title, fontsize=13, fontweight='bold')
+                            ax.legend(loc='best')
+                            if x_rot > 0:
+                                ax.tick_params(axis='x', rotation=x_rot)
+                            plot_ready = True
+                        except Exception as err:
+                            st.error(f"Error generating Frequency Line Chart: {err}")
 
-                        if x_rot > 0:
-                            ax.tick_params(axis='x', rotation=x_rot)
+                # Case B: Numeric Column Values
+                else:
+                    available_y_cols = numeric_cols if numeric_cols else all_cols
+                    col_choice_msg = "Select Y-axis Column(s)" if numeric_cols else "Select Column(s) to convert to numeric"
+                    
+                    if not numeric_cols:
+                        st.info("💡 No native numeric columns detected. Select any column below to convert it to numeric automatically.")
 
-                        plot_ready = True
-                    except Exception as err:
-                        st.error(f"Error generating Line Chart: {err}")
+                    default_selection = [available_y_cols[0]] if available_y_cols else []
+                    y_cols = st.multiselect(col_choice_msg, options=available_y_cols, default=default_selection, key="line_y_cols")
+
+                    if not y_cols:
+                        st.warning("Please select at least one column for the Y-axis.")
+                    else:
+                        try:
+                            if x_col == "Index (Row Number)":
+                                sub_df = df[y_cols].copy()
+                                x_vals = sub_df.index
+                                default_xlabel = "Row Index"
+                            else:
+                                sub_df = df[[x_col] + y_cols].copy().dropna(subset=[x_col])
+                                if sort_x:
+                                    sub_df = sub_df.sort_values(by=x_col)
+                                x_vals = sub_df[x_col]
+                                default_xlabel = str(x_col)
+
+                            valid_series_plotted = 0
+                            for col_name in y_cols:
+                                raw_series = sub_df[col_name]
+                                if pd.api.types.is_numeric_dtype(raw_series):
+                                    numeric_y = pd.to_numeric(raw_series, errors='coerce')
+                                else:
+                                    cleaned_str = raw_series.astype(str).str.replace('$', '', regex=False).str.replace(',', '', regex=False).str.strip()
+                                    numeric_y = pd.to_numeric(cleaned_str, errors='coerce')
+
+                                if numeric_y.isna().all():
+                                    st.warning(f"⚠️ Column '{col_name}' could not be converted to numbers because it contains non-numeric text.")
+                                    continue
+
+                                ax.plot(
+                                    x_vals,
+                                    numeric_y,
+                                    label=str(col_name),
+                                    marker=marker_map[marker_style],
+                                    linestyle=style_map[line_style],
+                                    linewidth=line_width,
+                                    alpha=0.9
+                                )
+                                if fill_area:
+                                    ax.fill_between(x_vals, numeric_y.fillna(0), alpha=0.15)
+                                valid_series_plotted += 1
+
+                            if valid_series_plotted > 0:
+                                ax.set_xlabel(custom_xlabel or default_xlabel)
+                                default_ylabel = ", ".join(y_cols) if len(y_cols) <= 2 else "Values"
+                                ax.set_ylabel(custom_ylabel or default_ylabel)
+                                default_title = f"Line Chart: {default_ylabel} vs {default_xlabel}"
+                                ax.set_title(custom_title or default_title, fontsize=13, fontweight='bold')
+                                ax.legend(loc='best')
+
+                                if x_rot > 0:
+                                    ax.tick_params(axis='x', rotation=x_rot)
+
+                                plot_ready = True
+                            else:
+                                st.warning("None of the selected columns could be converted to numbers. Try switching to 'Count of Records (Frequency over X)' mode above.")
+                        except Exception as err:
+                            st.error(f"Error generating Line Chart: {err}")
 
             # Display and Export
             if plot_ready:
