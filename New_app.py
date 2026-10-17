@@ -4,6 +4,7 @@ from io import BytesIO
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 import numpy as np
 
 # Function to display summary of data types
@@ -87,7 +88,7 @@ def render_visualization_module(df):
         valid_style = selected_style if selected_style in plt.style.available else "default"
 
         with plt.style.context(valid_style):
-            fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+            fig, ax = plt.subplots(figsize=(fig_width, fig_height), dpi=200)
             plot_ready = False
 
             # ----------------- 1. BAR CHART -----------------
@@ -113,14 +114,22 @@ def render_visualization_module(df):
                 try:
                     if y_mode == "Count of Records (Frequency)":
                         counts = df[x_col].astype(str).value_counts().dropna()
+                        total_cats = len(counts)
+                        if total_cats > 15:
+                            counts = counts.head(15)
+                            st.caption(f"ℹ️ Showing top 15 of {total_cats} categories for visual clarity.")
                         x_labels = [str(x) for x in counts.index]
                         y_values = counts.values.tolist()
                         default_ylabel = "Count"
                         default_xlabel = str(x_col)
-                        default_title = f"Frequency of {x_col}"
+                        default_title = f"Top Categories by Frequency: {x_col}" if total_cats > 15 else f"Frequency of {x_col}"
                     else:
                         if agg_func == "None (Raw Data)":
                             sub_df = df[[x_col, y_col]].dropna()
+                            total_rows = len(sub_df)
+                            if total_rows > 25:
+                                sub_df = sub_df.head(25)
+                                st.caption(f"ℹ️ Showing first 25 rows for visual clarity.")
                             x_labels = [str(x) for x in sub_df[x_col]]
                             y_values = sub_df[y_col].values.tolist()
                             default_ylabel = str(y_col)
@@ -128,10 +137,14 @@ def render_visualization_module(df):
                         else:
                             grouped = df.groupby(x_col)[y_col].agg(agg_func.lower()).dropna()
                             grouped = grouped.sort_values(ascending=False)
+                            total_cats = len(grouped)
+                            if total_cats > 15:
+                                grouped = grouped.head(15)
+                                st.caption(f"ℹ️ Showing top 15 of {total_cats} categories for visual clarity.")
                             x_labels = [str(x) for x in grouped.index]
                             y_values = grouped.values.tolist()
                             default_ylabel = f"{agg_func} of {y_col}"
-                            default_title = f"{agg_func} of {y_col} by {x_col}"
+                            default_title = f"Top 15 {x_col} by {agg_func} of {y_col}" if total_cats > 15 else f"{agg_func} of {y_col} by {x_col}"
                         default_xlabel = str(x_col)
 
                     if len(x_labels) == 0:
@@ -141,24 +154,34 @@ def render_visualization_module(df):
                         label_fmt = '%.2f' if is_float else '%g'
 
                         if bar_orient == "Vertical":
-                            bars = ax.bar(x_labels, y_values, color=bar_color, edgecolor='black', linewidth=0.6, alpha=0.85)
-                            if show_bar_labels:
-                                ax.bar_label(bars, padding=3, fmt=label_fmt)
+                            bars = ax.bar(range(len(x_labels)), y_values, color=bar_color, edgecolor='#15324a', linewidth=0.9, alpha=0.92)
+                            if show_bar_labels and len(x_labels) <= 20:
+                                ax.bar_label(bars, padding=4, fmt=label_fmt, fontsize=9.5, fontweight='semibold')
+
                             ax.set_xticks(range(len(x_labels)))
-                            ax.set_xticklabels(x_labels, rotation=x_rot, ha='right' if x_rot > 0 else 'center')
-                            ax.set_xlabel(custom_xlabel or default_xlabel)
-                            ax.set_ylabel(custom_ylabel or default_ylabel)
+                            rot_angle = 35 if len(x_labels) > 6 else 0
+                            ax.set_xticklabels(x_labels, rotation=rot_angle, ha='right' if rot_angle > 0 else 'center', fontsize=9.5)
+
+                            ax.set_xlabel(custom_xlabel or default_xlabel, fontsize=11, labelpad=8)
+                            ax.set_ylabel(custom_ylabel or default_ylabel, fontsize=11, labelpad=8)
                         else:
                             # Horizontal bar: reverse so highest value is at the top
                             rev_labels = x_labels[::-1]
                             rev_values = y_values[::-1]
-                            bars = ax.barh(rev_labels, rev_values, color=bar_color, edgecolor='black', linewidth=0.6, alpha=0.85)
-                            if show_bar_labels:
-                                ax.bar_label(bars, padding=3, fmt=label_fmt)
-                            ax.set_xlabel(custom_ylabel or default_ylabel)
-                            ax.set_ylabel(custom_xlabel or default_xlabel)
+                            bars = ax.barh(range(len(rev_labels)), rev_values, color=bar_color, edgecolor='#15324a', linewidth=0.9, alpha=0.92)
+                            if show_bar_labels and len(rev_labels) <= 20:
+                                ax.bar_label(bars, padding=4, fmt=label_fmt, fontsize=9.5, fontweight='semibold')
 
-                        ax.set_title(custom_title or default_title, fontsize=13, fontweight='bold')
+                            ax.set_yticks(range(len(rev_labels)))
+                            # Shorten long category labels
+                            clean_rev_labels = [l[:25] + '...' if len(l) > 28 else l for l in rev_labels]
+                            ax.set_yticklabels(clean_rev_labels, fontsize=9.5)
+                            ax.set_xlabel(custom_ylabel or default_ylabel, fontsize=11, labelpad=8)
+                            ax.set_ylabel(custom_xlabel or default_xlabel, fontsize=11, labelpad=8)
+
+                        ax.spines['top'].set_visible(False)
+                        ax.spines['right'].set_visible(False)
+                        ax.set_title(custom_title or default_title, fontsize=13, fontweight='bold', pad=12)
                         plot_ready = True
                 except Exception as err:
                     st.error(f"Error generating Bar Chart: {err}")
@@ -184,7 +207,7 @@ def render_visualization_module(df):
                     marker_style = st.selectbox("Marker Style", ["Circle (o)", "Square (s)", "Triangle (^)", "Diamond (d)", "None"], key="line_marker")
                     line_style = st.selectbox("Line Style", ["Solid (-)", "Dashed (--)", "Dotted (:)", "Dash-dot (-.)"], key="line_style")
                 with l_c4:
-                    line_width = st.slider("Line Width", min_value=1.0, max_value=5.0, value=2.0, step=0.5, key="line_width")
+                    line_width = st.slider("Line Width", min_value=1.0, max_value=5.0, value=2.2, step=0.5, key="line_width")
                     fill_area = st.checkbox("Shade Area Under Line", value=False, key="line_fill")
 
                 marker_map = {"None": None, "Circle (o)": "o", "Square (s)": "s", "Triangle (^)": "^", "Diamond (d)": "d"}
@@ -205,11 +228,12 @@ def render_visualization_module(df):
                             x_vals = [str(x) for x in counts.index]
                             y_vals = counts.values
 
+                            effective_marker = marker_map[marker_style] if len(x_vals) <= 40 else None
                             ax.plot(
-                                x_vals,
+                                range(len(x_vals)),
                                 y_vals,
                                 label="Record Count",
-                                marker=marker_map[marker_style],
+                                marker=effective_marker,
                                 linestyle=style_map[line_style],
                                 linewidth=line_width,
                                 color="#2b5c8f",
@@ -218,13 +242,23 @@ def render_visualization_module(df):
                             if fill_area:
                                 ax.fill_between(range(len(x_vals)), y_vals, alpha=0.15, color="#2b5c8f")
 
-                            ax.set_xlabel(custom_xlabel or str(x_col))
-                            ax.set_ylabel(custom_ylabel or "Count of Records")
+                            # Clean tick formatting
+                            if len(x_vals) > 15:
+                                step = max(1, len(x_vals) // 10)
+                                tick_indices = list(range(0, len(x_vals), step))
+                                ax.set_xticks(tick_indices)
+                                ax.set_xticklabels([x_vals[i] for i in tick_indices], rotation=45, ha='right', fontsize=9)
+                            else:
+                                ax.set_xticks(range(len(x_vals)))
+                                ax.set_xticklabels(x_vals, rotation=45, ha='right', fontsize=9)
+
+                            ax.spines['top'].set_visible(False)
+                            ax.spines['right'].set_visible(False)
+                            ax.set_xlabel(custom_xlabel or str(x_col), fontsize=11, labelpad=8)
+                            ax.set_ylabel(custom_ylabel or "Count of Records", fontsize=11, labelpad=8)
                             default_title = f"Frequency Trend of {x_col}"
-                            ax.set_title(custom_title or default_title, fontsize=13, fontweight='bold')
-                            ax.legend(loc='best')
-                            if x_rot > 0:
-                                ax.tick_params(axis='x', rotation=x_rot)
+                            ax.set_title(custom_title or default_title, fontsize=13, fontweight='bold', pad=12)
+                            ax.legend(loc='best', framealpha=0.9)
                             plot_ready = True
                         except Exception as err:
                             st.error(f"Error generating Frequency Line Chart: {err}")
@@ -248,14 +282,18 @@ def render_visualization_module(df):
                                 sub_df = df[y_cols].copy()
                                 x_vals = sub_df.index
                                 default_xlabel = "Row Index"
+                                is_index_x = True
                             else:
                                 sub_df = df[[x_col] + y_cols].copy().dropna(subset=[x_col])
                                 if sort_x:
                                     sub_df = sub_df.sort_values(by=x_col)
                                 x_vals = sub_df[x_col]
                                 default_xlabel = str(x_col)
+                                is_index_x = False
 
                             valid_series_plotted = 0
+                            effective_marker = marker_map[marker_style] if len(x_vals) <= 40 else None
+
                             for col_name in y_cols:
                                 raw_series = sub_df[col_name]
                                 if pd.api.types.is_numeric_dtype(raw_series):
@@ -269,29 +307,40 @@ def render_visualization_module(df):
                                     continue
 
                                 ax.plot(
-                                    x_vals,
+                                    range(len(x_vals)),
                                     numeric_y,
                                     label=str(col_name),
-                                    marker=marker_map[marker_style],
+                                    marker=effective_marker,
                                     linestyle=style_map[line_style],
                                     linewidth=line_width,
                                     alpha=0.9
                                 )
                                 if fill_area:
-                                    ax.fill_between(x_vals, numeric_y.fillna(0), alpha=0.15)
+                                    ax.fill_between(range(len(x_vals)), numeric_y.fillna(0), alpha=0.15)
                                 valid_series_plotted += 1
 
                             if valid_series_plotted > 0:
-                                ax.set_xlabel(custom_xlabel or default_xlabel)
+                                # Clean X-axis tick spacing
+                                if is_index_x:
+                                    ax.xaxis.set_major_locator(MaxNLocator(nbins=10, integer=True))
+                                else:
+                                    if len(x_vals) > 15:
+                                        step = max(1, len(x_vals) // 10)
+                                        tick_indices = list(range(0, len(x_vals), step))
+                                        ax.set_xticks(tick_indices)
+                                        ax.set_xticklabels([str(x_vals.iloc[i] if hasattr(x_vals, 'iloc') else x_vals[i]) for i in tick_indices], rotation=45, ha='right', fontsize=9)
+                                    else:
+                                        ax.set_xticks(range(len(x_vals)))
+                                        ax.set_xticklabels([str(x) for x in x_vals], rotation=45, ha='right', fontsize=9)
+
+                                ax.spines['top'].set_visible(False)
+                                ax.spines['right'].set_visible(False)
+                                ax.set_xlabel(custom_xlabel or default_xlabel, fontsize=11, labelpad=8)
                                 default_ylabel = ", ".join(y_cols) if len(y_cols) <= 2 else "Values"
-                                ax.set_ylabel(custom_ylabel or default_ylabel)
+                                ax.set_ylabel(custom_ylabel or default_ylabel, fontsize=11, labelpad=8)
                                 default_title = f"Line Chart: {default_ylabel} vs {default_xlabel}"
-                                ax.set_title(custom_title or default_title, fontsize=13, fontweight='bold')
-                                ax.legend(loc='best')
-
-                                if x_rot > 0:
-                                    ax.tick_params(axis='x', rotation=x_rot)
-
+                                ax.set_title(custom_title or default_title, fontsize=13, fontweight='bold', pad=12)
+                                ax.legend(loc='best', framealpha=0.9)
                                 plot_ready = True
                             else:
                                 st.warning("None of the selected columns could be converted to numbers. Try switching to 'Count of Records (Frequency over X)' mode above.")
@@ -301,10 +350,10 @@ def render_visualization_module(df):
             # Display and Export
             if plot_ready:
                 if show_grid:
-                    ax.grid(True, linestyle='--', alpha=0.6)
-                fig.tight_layout()
+                    ax.grid(True, linestyle='--', alpha=0.35, color='#cccccc')
+                fig.tight_layout(pad=1.5)
 
-                st.pyplot(fig)
+                st.pyplot(fig, use_container_width=True)
 
                 img_buffer = BytesIO()
                 fig.savefig(img_buffer, format="png", dpi=300, bbox_inches="tight")
