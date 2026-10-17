@@ -106,21 +106,13 @@ def render_visualization_module(df):
                         y_col = st.selectbox("Select Y-axis (Numeric)", options=numeric_cols, key="bar_y_col")
                         agg_func = st.selectbox("Aggregation Method", ["Sum", "Mean", "Median", "Min", "Max", "None (Raw Data)"], key="bar_agg")
 
-                b_c3, b_c4 = st.columns(2)
-                with b_c3:
-                    num_unique = df[x_col].nunique()
-                    limit_bars = st.checkbox("Limit to Top N Categories", value=(num_unique > 15), key="bar_limit")
-                    if limit_bars:
-                        top_n = st.slider("Max Categories to Show", min_value=3, max_value=50, value=min(15, max(3, num_unique)), key="bar_top_n")
-                with b_c4:
-                    bar_color = st.color_picker("Bar Color", value="#2b5c8f", key="bar_color")
                     show_bar_labels = st.checkbox("Show Value Labels on Bars", value=True, key="bar_show_labels")
+
+                bar_color = "#2b5c8f"
 
                 try:
                     if y_mode == "Count of Records (Frequency)":
                         counts = df[x_col].astype(str).value_counts().dropna()
-                        if limit_bars:
-                            counts = counts.head(top_n)
                         x_labels = [str(x) for x in counts.index]
                         y_values = counts.values.tolist()
                         default_ylabel = "Count"
@@ -129,8 +121,6 @@ def render_visualization_module(df):
                     else:
                         if agg_func == "None (Raw Data)":
                             sub_df = df[[x_col, y_col]].dropna()
-                            if limit_bars:
-                                sub_df = sub_df.head(top_n)
                             x_labels = [str(x) for x in sub_df[x_col]]
                             y_values = sub_df[y_col].values.tolist()
                             default_ylabel = str(y_col)
@@ -138,8 +128,6 @@ def render_visualization_module(df):
                         else:
                             grouped = df.groupby(x_col)[y_col].agg(agg_func.lower()).dropna()
                             grouped = grouped.sort_values(ascending=False)
-                            if limit_bars:
-                                grouped = grouped.head(top_n)
                             x_labels = [str(x) for x in grouped.index]
                             y_values = grouped.values.tolist()
                             default_ylabel = f"{agg_func} of {y_col}"
