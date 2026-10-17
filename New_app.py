@@ -75,28 +75,13 @@ def render_visualization_module(df):
             available_styles = [s for s in style_options if s in plt.style.available] or ["default"]
             selected_style = st.selectbox("Plot Theme / Style", options=available_styles, index=0, key="viz_theme")
 
-        # Customization settings expander
-        with st.expander("🎨 Appearance & Canvas Settings", expanded=False):
-            c_title, c_rot = st.columns(2)
-            with c_title:
-                custom_title = st.text_input("Custom Chart Title", value="", placeholder="Leave blank for automatic title", key="viz_title")
-            with c_rot:
-                default_rot = 45 if chart_type in ["Bar Chart", "Line Chart", "Box Plot"] else 0
-                x_rot = st.slider("X-axis Label Rotation (°)", min_value=0, max_value=90, value=default_rot, step=15, key="viz_rot")
-
-            c_xlab, c_ylab = st.columns(2)
-            with c_xlab:
-                custom_xlabel = st.text_input("Custom X-axis Label", value="", placeholder="Leave blank for automatic label", key="viz_xlab")
-            with c_ylab:
-                custom_ylabel = st.text_input("Custom Y-axis Label", value="", placeholder="Leave blank for automatic label", key="viz_ylab")
-
-            c_w, c_h, c_grid = st.columns([1, 1, 1])
-            with c_w:
-                fig_width = st.slider("Figure Width", min_value=6, max_value=16, value=10, key="viz_width")
-            with c_h:
-                fig_height = st.slider("Figure Height", min_value=3, max_value=12, value=5, key="viz_height")
-            with c_grid:
-                show_grid = st.checkbox("Show Grid Lines", value=True, key="viz_grid")
+        # Default canvas and appearance settings
+        fig_width, fig_height = 10, 5
+        x_rot = 45
+        show_grid = True
+        custom_title = ""
+        custom_xlabel = ""
+        custom_ylabel = ""
 
         # Plot generation
         valid_style = selected_style if selected_style in plt.style.available else "default"
