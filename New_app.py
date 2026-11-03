@@ -386,7 +386,7 @@ def reset_session_state():
 
 # Sidebar for file upload and reset button
 st.sidebar.header('📤 Upload your CSV file here')
-file = st.sidebar.file_uploader("", type="csv")
+file = st.sidebar.file_uploader("Upload CSV file", type="csv", label_visibility="collapsed")
 
 st.sidebar.write("> Click the Reset button to undo all changes")
 if st.sidebar.button('Reset'):
@@ -516,9 +516,9 @@ else:
             elif fill_option == "Zero":
                 df[column].fillna(0, inplace=True)
             elif fill_option == "Forward Fill":
-                df[column].fillna(method='ffill', inplace=True)
+                df[column] = df[column].fillna(method='ffill')
             elif fill_option == "Backward Fill":
-                df[column].fillna(method='bfill', inplace=True)
+                df[column] = df[column].fillna(method='bfill')
             st.success(f'Missing values in {column} filled with {fill_option}.')
 
         # Updated data overview
